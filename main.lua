@@ -17,21 +17,8 @@ local Window = Rayfield:CreateWindow({
         FolderName = "PondHub",
         FileName = "PondHubConfig"
     },
-    Discord = {
-        Enabled = false,
-        Invite = "",
-        RememberJoins = true
-    },
-    KeySystem = false,
-    KeySettings = {
-        Title = "น้องปอนด์ Hub",
-        Subtitle = "Key System",
-        Note = "No key needed",
-        FileName = "Key",
-        SaveKey = false,
-        GrabKeyFromSite = false,
-        Key = {""}
-    }
+    Discord = {Enabled = false},
+    KeySystem = false
 })
 
 -- Tabs
@@ -180,7 +167,7 @@ MainTab:CreateSlider({
 
 MainTab:CreateParagraph({
     Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ W/S = บินไปข้างหน้า/หลัง (PC)\n📱 ใช้จอยเสมือน (Virtual Thumbstick) เพื่อบินบนมือถือ"
+    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง (PC: WASD / Mobile: จอยเสมือน)"
 })
 
 -- ==================== OTHER TAB ====================
@@ -196,16 +183,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.C then
         flyEnabled = not flyEnabled
-        if not flyEnabled then
-            if BV then BV:Destroy() BV = nil end
-            if BG then BG:Destroy() BG = nil end
-        end
-        Rayfield:Notify({
-            Title = "เทพเจ้าลอยฟ้า",
-            Content = flyEnabled and "เปิด ✨" or "ปิด",
-            Duration = 2,
-            Image = 4483362458,
-        })
+        Rayfield.Flags["FlyToggle"]:Set(flyEnabled)
     end
 end)
 
@@ -263,7 +241,7 @@ task.spawn(function()
     end
 end)
 
--- ==================== FLY SYSTEM (PC + MOBILE) ====================
+-- ==================== FREE-FLIGHT SYSTEM ====================
 
 RunService.Heartbeat:Connect(function()
     local char = player.Character
@@ -303,13 +281,12 @@ RunService.Heartbeat:Connect(function()
         end
 
         -- Mobile Controls (Virtual Thumbstick)
-        local moveVector = Vector3.new(0, 0, 0)
         if UserInputService.TouchEnabled and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
-            moveVector = player.Character:FindFirstChildOfClass("Humanoid").MoveDirection
-        end
-
-        if moveVector.Magnitude > 0 then
-            moveDirection = moveVector
+            local moveVector = player.Character:FindFirstChildOfClass("Humanoid").MoveDirection
+            if moveVector.Magnitude > 0 then
+                local camDir = cam.CFrame:VectorToWorldSpace(moveVector)
+                moveDirection = moveDirection + camDir
+            end
         end
 
         if moveDirection.Magnitude > 0 then
