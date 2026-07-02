@@ -241,7 +241,7 @@ task.spawn(function()
     end
 end)
 
--- ==================== FIXED MOBILE FLY SYSTEM ====================
+-- ==================== PROPER MOBILE FLY SYSTEM ====================
 
 RunService.Heartbeat:Connect(function()
     local char = player.Character
@@ -280,11 +280,13 @@ RunService.Heartbeat:Connect(function()
             moveDirection = moveDirection + cam.CFrame.RightVector
         end
 
-        -- Mobile Controls (Camera-relative)
+        -- Mobile Controls (Proper Camera-relative Mapping)
         if UserInputService.TouchEnabled and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
             local moveVector = player.Character:FindFirstChildOfClass("Humanoid").MoveDirection
             if moveVector.Magnitude > 0 then
-                moveDirection = cam.CFrame:VectorToWorldSpace(moveVector)
+                local forward = cam.CFrame.LookVector * moveVector.Z
+                local right = cam.CFrame.RightVector * moveVector.X
+                moveDirection = forward + right
             end
         end
 
@@ -293,11 +295,7 @@ RunService.Heartbeat:Connect(function()
         end
 
         BV.Velocity = moveDirection * flySpeed
-
-        -- Properly align character with camera direction
-        local camCF = cam.CFrame
-        local _, yRot, _ = camCF:ToEulerAnglesYXZ()
-        BG.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, yRot, 0)
+        BG.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
     else
         if BV then BV:Destroy() BV = nil end
         if BG then BG:Destroy() BG = nil end
@@ -352,4 +350,4 @@ Rayfield:Notify({
     Content = "โหลดสำเร็จ! ยินดีต้อนรับ 🎨",
     Duration = 5,
     Image = 4483362458,
-}
+})
