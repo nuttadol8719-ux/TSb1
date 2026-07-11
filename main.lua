@@ -167,7 +167,7 @@ MainTab:CreateSlider({
 
 MainTab:CreateParagraph({
     Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง (PC: WASD / Mobile: จอยเสมือน)"
+    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง 3 มิติ (PC: WASD / Mobile: จอย)"
 })
 
 -- ==================== OTHER TAB ====================
@@ -241,13 +241,14 @@ task.spawn(function()
     end
 end)
 
--- ==================== PROPER MOBILE FLY SYSTEM ====================
+-- ==================== MOBILE FLY (เหมือน PC 100% - บินได้ทั้ง 3 มิติ) ====================
 
 RunService.Heartbeat:Connect(function()
     local char = player.Character
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
+    local hum = char:FindFirstChild("Humanoid")
+    if not hrp or not hum then return end
 
     if flyEnabled then
         if not BV then
@@ -280,13 +281,22 @@ RunService.Heartbeat:Connect(function()
             moveDirection = moveDirection + cam.CFrame.RightVector
         end
 
-        -- Mobile Controls (Proper Camera-relative Mapping)
-        if UserInputService.TouchEnabled and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
-            local moveVector = player.Character:FindFirstChildOfClass("Humanoid").MoveDirection
-            if moveVector.Magnitude > 0 then
-                local forward = cam.CFrame.LookVector * moveVector.Z
-                local right = cam.CFrame.RightVector * moveVector.X
-                moveDirection = forward + right
+        -- Mobile Controls (เหมือน PC เป๊ะ - ใช้ LookVector เต็มรูปแบบ รวม Y axis)
+        if UserInputService.TouchEnabled then
+            local moveDir = hum.MoveDirection
+            
+            if moveDir.Magnitude > 0 then
+                -- อ่านค่ากล้อง real-time (ไม่ตัด Y axis)
+                local camCF = cam.CFrame
+                local camLook = camCF.LookVector  -- รวม Y axis ด้วย
+                local camRight = camCF.RightVector
+                
+                -- คำนวณทิศทางตามกล้อง (รวมขึ้น-ลงด้วย)
+                local forwardAmount = moveDir:Dot(Vector3.new(camLook.X, 0, camLook.Z).Unit)
+                local rightAmount = moveDir:Dot(Vector3.new(camRight.X, 0, camRight.Z).Unit)
+                
+                -- สร้างทิศทางใหม่ตามกล้อง (รวม Y axis)
+                moveDirection = moveDirection + (camLook * forwardAmount) + (camRight * rightAmount)
             end
         end
 
