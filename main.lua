@@ -31,6 +31,7 @@ local remoteEnabled = false
 local AutoSkill = false
 local flyEnabled = false
 local freezeAnimEnabled = false
+local fakeBugEnabled = false
 local selectedPlayer = nil
 local selectedPlayerName = nil
 local distance = 5
@@ -40,6 +41,12 @@ local mode = "เข้าหลัง💦"
 local orbitAngle = 0
 local BV = nil
 local BG = nil
+local FakeBugGyro = nil
+local previousPosition = nil
+local moveThreshold = 0.05
+local tiltActive = false
+local tiltTimer = 0
+local tiltDuration = 0.5
 
 -- Functions
 local function GetPlayers()
@@ -163,6 +170,53 @@ MainTab:CreateToggle({
     end,
 })
 
+MainTab:CreateToggle({
+    Name = "🌀 บัคปลอม (Fake Bug)",
+    CurrentValue = false,
+    Flag = "FakeBugToggle",
+    Callback = function(Value)
+        fakeBugEnabled = Value
+        local char = player.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            local hrp = char.HumanoidRootPart
+            if Value then
+                if not FakeBugGyro then
+                    FakeBugGyro = Instance.new("BodyGyro")
+                    FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+                    FakeBugGyro.P = 10000
+                    FakeBugGyro.D = 500
+                    FakeBugGyro.Parent = hrp
+                end
+                previousPosition = hrp.Position
+                tiltActive = false
+                tiltTimer = 0
+                
+                Rayfield:Notify({
+                    Title = "บัคปลอม เปิด",
+                    Content = "ตัวจะเอียง 30° เมื่อเคลื่อนไหว 🌀",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            else
+                if FakeBugGyro then
+                    FakeBugGyro:Destroy()
+                    FakeBugGyro = nil
+                end
+                previousPosition = nil
+                tiltActive = false
+                tiltTimer = 0
+                
+                Rayfield:Notify({
+                    Title = "บัคปลอม ปิด",
+                    Content = "กลับสู่ปกติแล้ว",
+                    Duration = 3,
+                    Image = 4483362458,
+                })
+            end
+        end
+    end,
+})
+
 MainTab:CreateSlider({
     Name = "ระยะ",
     Range = {1, 20},
@@ -212,7 +266,7 @@ MainTab:CreateSlider({
 
 MainTab:CreateParagraph({
     Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง 3 มิติ\n🕵️ Anti-Detect: คนอื่นมองไม่เห็นว่าคุณทำอะไร"
+    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง 3 มิติ\n🕵️ Anti-Detect: คนอื่นมองไม่เห็นว่าคุณทำอะไร\n🌀 บัคปลอม: ตัวเอียง 30° เมื่อเคลื่อนไหว"
 })
 
 -- ==================== OTHER TAB ====================
@@ -225,6 +279,11 @@ OtherTab:CreateParagraph({
 OtherTab:CreateParagraph({
     Title = "🕵️ Anti-Detect คืออะไร?",
     Content = "• หยุดอนิเมชั่นทั้งหมด\n• คนอื่นเห็นคุณยืนนิ่ง\n• แต่คุณยังทำงานได้ปกติ\n• เหมาะสำหรับซ่อนการโกง"
+})
+
+OtherTab:CreateParagraph({
+    Title = "🌀 บัคปลอม คืออะไร?",
+    Content = "• ตัวละครจะเอียง 30°\n• เมื่อเคลื่อนไหว = เอียง\n• หยุดนิ่ง 0.5 วินาที = กลับปกติ\n• ตอนล้มไม่กลิ้ง + ลุกเร็ว"
 })
 
 -- ==================== KEYBIND HANDLER ====================
@@ -313,15 +372,16 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
--- ==================== MOBILE FLY (เหมือน PC 100%) ====================
+-- ==================== MOBILE FLY + FAKE BUG SYSTEM ====================
 
-RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function(dt)
     local char = player.Character
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
     local hum = char:FindFirstChild("Humanoid")
     if not hrp or not hum then return end
 
+    -- ==================== FLY SYSTEM ====================
     if flyEnabled then
         if not BV then
             BV = Instance.new("BodyVelocity")
@@ -378,6 +438,58 @@ RunService.Heartbeat:Connect(function()
     else
         if BV then BV:Destroy() BV = nil end
         if BG then BG:Destroy() BG = nil end
+    end
+
+    -- ==================== FAKE BUG SYSTEM (แก้ตอนล้มกลิ้ง + ลุกช้า) ====================
+    if fakeBugEnabled and FakeBugGyro then
+        local currentState = hum:GetState()
+        
+        -- ตรวจสอบว่าล้มหรือตายหรือไม่
+        local isDown = (hum.Health <= 0 or 
+                       currentState == Enum.HumanoidStateType.Dead or 
+                       currentState == Enum.HumanoidStateType.Ragdoll or
+                       currentState == Enum.HumanoidStateType.FallingDown or
+                       currentState == Enum.HumanoidStateType.Physics)
+        
+        -- ตรวจสอบว่ากำลังลุกขึ้นหรือไม่
+        local isGettingUp = (currentState == Enum.HumanoidStateType.GettingUp)
+        
+        if isDown then
+            -- ปิด BodyGyro ชั่วคราว (ไม่ให้กลิ้ง)
+            FakeBugGyro.MaxTorque = Vector3.new(0, 0, 0)
+        elseif isGettingUp then
+            -- ตอนลุกขึ้น: ใช้แรงน้อยลง (ให้ลุกเร็วขึ้น)
+            FakeBugGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
+            FakeBugGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + hrp.CFrame.LookVector)
+        else
+            -- เปิด BodyGyro กลับ (ทำงานปกติ)
+            FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            
+            if previousPosition then
+                local distanceMoved = (hrp.Position - previousPosition).Magnitude
+                if distanceMoved > moveThreshold then
+                    tiltActive = true
+                    tiltTimer = tiltDuration
+                else
+                    if tiltTimer > 0 then
+                        tiltTimer -= dt
+                    else
+                        tiltActive = false
+                    end
+                end
+                previousPosition = hrp.Position
+            else
+                previousPosition = hrp.Position
+            end
+
+            if tiltActive then
+                local lookVector = hrp.CFrame.LookVector
+                local tiltCF = CFrame.new(hrp.Position, hrp.Position + lookVector) * CFrame.Angles(math.rad(30), 0, 0)
+                FakeBugGyro.CFrame = tiltCF
+            else
+                FakeBugGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + hrp.CFrame.LookVector)
+            end
+        end
     end
 end)
 
