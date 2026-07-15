@@ -30,6 +30,7 @@ local enabled = false
 local remoteEnabled = false
 local AutoSkill = false
 local flyEnabled = false
+local freezeAnimEnabled = false
 local selectedPlayer = nil
 local selectedPlayerName = nil
 local distance = 5
@@ -118,6 +119,50 @@ MainTab:CreateToggle({
     end,
 })
 
+MainTab:CreateToggle({
+    Name = "🕵️ Anti-Detect (มองไม่เห็น)",
+    CurrentValue = false,
+    Flag = "FreezeAnimToggle",
+    Callback = function(Value)
+        freezeAnimEnabled = Value
+        
+        local char = player.Character
+        if not char then return end
+        
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+        
+        local animator = humanoid:FindFirstChildOfClass("Animator")
+        if not animator then return end
+        
+        if Value then
+            -- หยุดอนิเมชั่นทั้งหมด
+            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                track:AdjustSpeed(0)
+            end
+            
+            Rayfield:Notify({
+                Title = "Anti-Detect เปิด",
+                Content = "คนอื่นมองไม่เห็นว่าคุณทำอะไร 🕵️",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        else
+            -- คืนอนิเมชั่นกลับ
+            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                track:AdjustSpeed(1)
+            end
+            
+            Rayfield:Notify({
+                Title = "Anti-Detect ปิด",
+                Content = "อนิเมชั่นกลับมาปกติแล้ว",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        end
+    end,
+})
+
 MainTab:CreateSlider({
     Name = "ระยะ",
     Range = {1, 20},
@@ -167,7 +212,7 @@ MainTab:CreateSlider({
 
 MainTab:CreateParagraph({
     Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง 3 มิติ (PC: WASD / Mobile: จอย)"
+    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง 3 มิติ\n🕵️ Anti-Detect: คนอื่นมองไม่เห็นว่าคุณทำอะไร"
 })
 
 -- ==================== OTHER TAB ====================
@@ -175,6 +220,11 @@ MainTab:CreateParagraph({
 OtherTab:CreateParagraph({
     Title = "ℹ️ ข้อมูล UI",
     Content = "UI Library: Rayfield\nVersion: Latest\nCreated by: pond"
+})
+
+OtherTab:CreateParagraph({
+    Title = "🕵️ Anti-Detect คืออะไร?",
+    Content = "• หยุดอนิเมชั่นทั้งหมด\n• คนอื่นเห็นคุณยืนนิ่ง\n• แต่คุณยังทำงานได้ปกติ\n• เหมาะสำหรับซ่อนการโกง"
 })
 
 -- ==================== KEYBIND HANDLER ====================
@@ -241,7 +291,29 @@ task.spawn(function()
     end
 end)
 
--- ==================== MOBILE FLY (เหมือน PC 100% - บินได้ทั้ง 3 มิติ) ====================
+-- ==================== ANTI-DETECT SYSTEM (หยุดอนิเมชั่นทุกเฟรม) ====================
+
+RunService.Heartbeat:Connect(function()
+    if freezeAnimEnabled then
+        local char = player.Character
+        if not char then return end
+        
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if not humanoid then return end
+        
+        local animator = humanoid:FindFirstChildOfClass("Animator")
+        if not animator then return end
+        
+        -- หยุดอนิเมชั่นทั้งหมดทุกเฟรม
+        for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+            if track.Speed ~= 0 then
+                track:AdjustSpeed(0) -- ความเร็ว = 0 = หยุดนิ่ง
+            end
+        end
+    end
+end)
+
+-- ==================== MOBILE FLY (เหมือน PC 100%) ====================
 
 RunService.Heartbeat:Connect(function()
     local char = player.Character
@@ -281,21 +353,18 @@ RunService.Heartbeat:Connect(function()
             moveDirection = moveDirection + cam.CFrame.RightVector
         end
 
-        -- Mobile Controls (เหมือน PC เป๊ะ - ใช้ LookVector เต็มรูปแบบ รวม Y axis)
+        -- Mobile Controls
         if UserInputService.TouchEnabled then
             local moveDir = hum.MoveDirection
             
             if moveDir.Magnitude > 0 then
-                -- อ่านค่ากล้อง real-time (ไม่ตัด Y axis)
                 local camCF = cam.CFrame
-                local camLook = camCF.LookVector  -- รวม Y axis ด้วย
+                local camLook = camCF.LookVector
                 local camRight = camCF.RightVector
                 
-                -- คำนวณทิศทางตามกล้อง (รวมขึ้น-ลงด้วย)
                 local forwardAmount = moveDir:Dot(Vector3.new(camLook.X, 0, camLook.Z).Unit)
                 local rightAmount = moveDir:Dot(Vector3.new(camRight.X, 0, camRight.Z).Unit)
                 
-                -- สร้างทิศทางใหม่ตามกล้อง (รวม Y axis)
                 moveDirection = moveDirection + (camLook * forwardAmount) + (camRight * rightAmount)
             end
         end
