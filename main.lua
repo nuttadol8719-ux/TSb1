@@ -32,6 +32,7 @@ local AutoSkill = false
 local flyEnabled = false
 local freezeAnimEnabled = false
 local fakeBugEnabled = false
+local showFlyButton = true
 local selectedPlayer = nil
 local selectedPlayerName = nil
 local distance = 5
@@ -58,6 +59,102 @@ local function GetPlayers()
     end
     return t
 end
+
+-- ==================== FLOATING FLY BUTTON (สำหรับมือถือ) ====================
+
+local PlayerGui = player:WaitForChild("PlayerGui")
+
+local FlyButtonGui = Instance.new("ScreenGui")
+FlyButtonGui.Name = "FlyButtonGui"
+FlyButtonGui.ResetOnSpawn = false
+FlyButtonGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+FlyButtonGui.Parent = PlayerGui
+FlyButtonGui.Enabled = true
+
+local FlyButton = Instance.new("TextButton")
+FlyButton.Name = "FlyButton"
+FlyButton.Size = UDim2.new(0, 80, 0, 80)
+FlyButton.Position = UDim2.new(1, -100, 0.5, -40)
+FlyButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+FlyButton.BorderSizePixel = 0
+FlyButton.Text = "✈️"
+FlyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FlyButton.TextSize = 40
+FlyButton.Font = Enum.Font.GothamBold
+FlyButton.Parent = FlyButtonGui
+
+local Corner = Instance.new("UICorner")
+Corner.CornerRadius = UDim.new(0, 15)
+Corner.Parent = FlyButton
+
+local Shadow = Instance.new("ImageLabel")
+Shadow.Name = "Shadow"
+Shadow.Size = UDim2.new(1, 10, 1, 10)
+Shadow.Position = UDim2.new(0, -5, 0, -5)
+Shadow.BackgroundTransparency = 1
+Shadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
+Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+Shadow.ImageTransparency = 0.5
+Shadow.ZIndex = -1
+Shadow.Parent = FlyButton
+
+local function UpdateButtonColor()
+    if flyEnabled then
+        FlyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
+        FlyButton.Text = "✈️ ON"
+        FlyButton.TextSize = 24
+    else
+        FlyButton.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+        FlyButton.Text = "✈️"
+        FlyButton.TextSize = 40
+    end
+end
+
+FlyButton.MouseButton1Click:Connect(function()
+    flyEnabled = not flyEnabled
+    UpdateButtonColor()
+    if not flyEnabled then
+        if BV then BV:Destroy() BV = nil end
+        if BG then BG:Destroy() BG = nil end
+    end
+    if Rayfield.Flags["FlyToggle"] then
+        Rayfield.Flags["FlyToggle"]:Set(flyEnabled)
+    end
+end)
+
+local dragging = false
+local dragInput, mousePos, framePos
+
+FlyButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        mousePos = input.Position
+        framePos = FlyButton.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+FlyButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - mousePos
+        FlyButton.Position = UDim2.new(
+            framePos.X.Scale,
+            framePos.X.Offset + delta.X,
+            framePos.Y.Scale,
+            framePos.Y.Offset + delta.Y
+        )
+    end
+end)
 
 -- ==================== MAIN TAB ====================
 
@@ -119,6 +216,7 @@ MainTab:CreateToggle({
     Flag = "FlyToggle",
     Callback = function(Value)
         flyEnabled = Value
+        UpdateButtonColor()
         if not Value then
             if BV then BV:Destroy() BV = nil end
             if BG then BG:Destroy() BG = nil end
@@ -127,41 +225,43 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name = "🕵️ Anti-Detect (มองไม่เห็น)",
+    Name = "แสดงปุ่มลอย ✈️",
+    CurrentValue = true,
+    Flag = "ShowFlyButtonToggle",
+    Callback = function(Value)
+        showFlyButton = Value
+        FlyButtonGui.Enabled = Value
+    end,
+})
+
+MainTab:CreateToggle({
+    Name = "💥 อนิเมชั่นเพิ่มดาเมจ",
     CurrentValue = false,
     Flag = "FreezeAnimToggle",
     Callback = function(Value)
         freezeAnimEnabled = Value
-        
         local char = player.Character
         if not char then return end
-        
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
-        
         local animator = humanoid:FindFirstChildOfClass("Animator")
         if not animator then return end
-        
         if Value then
-            -- หยุดอนิเมชั่นทั้งหมด
             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
                 track:AdjustSpeed(0)
             end
-            
             Rayfield:Notify({
-                Title = "Anti-Detect เปิด",
-                Content = "คนอื่นมองไม่เห็นว่าคุณทำอะไร 🕵️",
+                Title = "อนิเมชั่นเพิ่มดาเมจ เปิด",
+                Content = "ดาเมจเพิ่มขึ้น! 💥",
                 Duration = 3,
                 Image = 4483362458,
             })
         else
-            -- คืนอนิเมชั่นกลับ
             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
                 track:AdjustSpeed(1)
             end
-            
             Rayfield:Notify({
-                Title = "Anti-Detect ปิด",
+                Title = "อนิเมชั่นเพิ่มดาเมจ ปิด",
                 Content = "อนิเมชั่นกลับมาปกติแล้ว",
                 Duration = 3,
                 Image = 4483362458,
@@ -176,43 +276,27 @@ MainTab:CreateToggle({
     Flag = "FakeBugToggle",
     Callback = function(Value)
         fakeBugEnabled = Value
-        local char = player.Character
-        if char and char:FindFirstChild("HumanoidRootPart") then
-            local hrp = char.HumanoidRootPart
-            if Value then
-                if not FakeBugGyro then
-                    FakeBugGyro = Instance.new("BodyGyro")
-                    FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-                    FakeBugGyro.P = 10000
-                    FakeBugGyro.D = 500
-                    FakeBugGyro.Parent = hrp
-                end
-                previousPosition = hrp.Position
-                tiltActive = false
-                tiltTimer = 0
-                
-                Rayfield:Notify({
-                    Title = "บัคปลอม เปิด",
-                    Content = "ตัวจะเอียง 30° เมื่อเคลื่อนไหว 🌀",
-                    Duration = 3,
-                    Image = 4483362458,
-                })
-            else
-                if FakeBugGyro then
-                    FakeBugGyro:Destroy()
-                    FakeBugGyro = nil
-                end
-                previousPosition = nil
-                tiltActive = false
-                tiltTimer = 0
-                
-                Rayfield:Notify({
-                    Title = "บัคปลอม ปิด",
-                    Content = "กลับสู่ปกติแล้ว",
-                    Duration = 3,
-                    Image = 4483362458,
-                })
+        if not Value then
+            if FakeBugGyro then
+                FakeBugGyro:Destroy()
+                FakeBugGyro = nil
             end
+            previousPosition = nil
+            tiltActive = false
+            tiltTimer = 0
+            Rayfield:Notify({
+                Title = "บัคปลอม ปิด",
+                Content = "กลับสู่ปกติแล้ว",
+                Duration = 3,
+                Image = 4483362458,
+            })
+        else
+            Rayfield:Notify({
+                Title = "บัคปลอม เปิด",
+                Content = "ตัวจะแหงนขึ้น 35° เมื่อเคลื่อนไหว 🌀",
+                Duration = 3,
+                Image = 4483362458,
+            })
         end
     end,
 })
@@ -266,7 +350,7 @@ MainTab:CreateSlider({
 
 MainTab:CreateParagraph({
     Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C\n✈️ บินอิสระตามกล้อง 3 มิติ\n🕵️ Anti-Detect: คนอื่นมองไม่เห็นว่าคุณทำอะไร\n🌀 บัคปลอม: ตัวเอียง 30° เมื่อเคลื่อนไหว"
+    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C หรือปุ่มลอย ✈️\n✈️ ปุ่มลอยสามารถซ่อน/แสดงได้\n💥 อนิเมชั่นเพิ่มดาเมจ: หยุดอนิเมชั่น = ดาเมจเพิ่ม\n🌀 บัคปลอม: ตัวแหงนขึ้น 35° เมื่อเคลื่อนไหว"
 })
 
 -- ==================== OTHER TAB ====================
@@ -276,103 +360,18 @@ OtherTab:CreateParagraph({
     Content = "UI Library: Rayfield\nVersion: Latest\nCreated by: pond"
 })
 
-OtherTab:CreateParagraph({
-    Title = "🕵️ Anti-Detect คืออะไร?",
-    Content = "• หยุดอนิเมชั่นทั้งหมด\n• คนอื่นเห็นคุณยืนนิ่ง\n• แต่คุณยังทำงานได้ปกติ\n• เหมาะสำหรับซ่อนการโกง"
-})
-
-OtherTab:CreateParagraph({
-    Title = "🌀 บัคปลอม คืออะไร?",
-    Content = "• ตัวละครจะเอียง 30°\n• เมื่อเคลื่อนไหว = เอียง\n• หยุดนิ่ง 0.5 วินาที = กลับปกติ\n• ตอนล้มไม่กลิ้ง + ลุกเร็ว"
-})
-
 -- ==================== KEYBIND HANDLER ====================
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
     if input.KeyCode == Enum.KeyCode.C then
         flyEnabled = not flyEnabled
+        UpdateButtonColor()
         Rayfield.Flags["FlyToggle"]:Set(flyEnabled)
     end
 end)
 
--- ==================== LOOPS ====================
-
-task.spawn(function()
-    while task.wait(0.1) do
-        if remoteEnabled then
-            local char = player.Character
-            if char and char:FindFirstChild("Communicate") then
-                char.Communicate:FireServer({
-                    Goal = "LeftClick",
-                    Mobile = true
-                })
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait() do
-        if AutoSkill then
-            local char = player.Character
-            local hum = char and char:FindFirstChild("Humanoid")
-            local backpack = player:FindFirstChild("Backpack")
-            if char and hum and hum.Health > 0 and backpack then
-                local communicate = char:FindFirstChild("Communicate")
-                if communicate then
-                    local skills = {"Normal Punch","Consecutive Punches","Shove","Uppercut"}
-                    for _, skillName in ipairs(skills) do
-                        local skill = backpack:FindFirstChild(skillName)
-                        if skill and AutoSkill then
-                            local args = {{
-                                IsAutoActivate = true,
-                                Goal = "Console Move",
-                                Tool = skill,
-                                ToolName = skillName
-                            }}
-                            communicate:FireServer(unpack(args))
-                            task.wait(0.5)
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
-
-task.spawn(function()
-    while task.wait(0.5) do
-        if selectedPlayerName then
-            local targetPlayer = Players:FindFirstChild(selectedPlayerName)
-            selectedPlayer = targetPlayer or nil
-        end
-    end
-end)
-
--- ==================== ANTI-DETECT SYSTEM (หยุดอนิเมชั่นทุกเฟรม) ====================
-
-RunService.Heartbeat:Connect(function()
-    if freezeAnimEnabled then
-        local char = player.Character
-        if not char then return end
-        
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid then return end
-        
-        local animator = humanoid:FindFirstChildOfClass("Animator")
-        if not animator then return end
-        
-        -- หยุดอนิเมชั่นทั้งหมดทุกเฟรม
-        for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-            if track.Speed ~= 0 then
-                track:AdjustSpeed(0) -- ความเร็ว = 0 = หยุดนิ่ง
-            end
-        end
-    end
-end)
-
--- ==================== MOBILE FLY + FAKE BUG SYSTEM ====================
+-- ==================== SYSTEMS ====================
 
 RunService.Heartbeat:Connect(function(dt)
     local char = player.Character
@@ -381,7 +380,6 @@ RunService.Heartbeat:Connect(function(dt)
     local hum = char:FindFirstChild("Humanoid")
     if not hrp or not hum then return end
 
-    -- ==================== FLY SYSTEM ====================
     if flyEnabled then
         if not BV then
             BV = Instance.new("BodyVelocity")
@@ -398,8 +396,6 @@ RunService.Heartbeat:Connect(function(dt)
 
         local cam = workspace.CurrentCamera
         local moveDirection = Vector3.new(0, 0, 0)
-
-        -- PC Controls
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then
             moveDirection = moveDirection + cam.CFrame.LookVector
         end
@@ -412,27 +408,20 @@ RunService.Heartbeat:Connect(function(dt)
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then
             moveDirection = moveDirection + cam.CFrame.RightVector
         end
-
-        -- Mobile Controls
         if UserInputService.TouchEnabled then
             local moveDir = hum.MoveDirection
-            
             if moveDir.Magnitude > 0 then
                 local camCF = cam.CFrame
                 local camLook = camCF.LookVector
                 local camRight = camCF.RightVector
-                
                 local forwardAmount = moveDir:Dot(Vector3.new(camLook.X, 0, camLook.Z).Unit)
                 local rightAmount = moveDir:Dot(Vector3.new(camRight.X, 0, camRight.Z).Unit)
-                
                 moveDirection = moveDirection + (camLook * forwardAmount) + (camRight * rightAmount)
             end
         end
-
         if moveDirection.Magnitude > 0 then
             moveDirection = moveDirection.Unit
         end
-
         BV.Velocity = moveDirection * flySpeed
         BG.CFrame = CFrame.new(hrp.Position, hrp.Position + cam.CFrame.LookVector)
     else
@@ -440,31 +429,25 @@ RunService.Heartbeat:Connect(function(dt)
         if BG then BG:Destroy() BG = nil end
     end
 
-    -- ==================== FAKE BUG SYSTEM (แก้ตอนล้มกลิ้ง + ลุกช้า) ====================
-    if fakeBugEnabled and FakeBugGyro then
+    if fakeBugEnabled then
+        if not FakeBugGyro or FakeBugGyro.Parent ~= hrp then
+            FakeBugGyro = Instance.new("BodyGyro")
+            FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+            FakeBugGyro.P = 10000
+            FakeBugGyro.D = 500
+            FakeBugGyro.Parent = hrp
+            previousPosition = hrp.Position
+        end
         local currentState = hum:GetState()
-        
-        -- ตรวจสอบว่าล้มหรือตายหรือไม่
-        local isDown = (hum.Health <= 0 or 
-                       currentState == Enum.HumanoidStateType.Dead or 
-                       currentState == Enum.HumanoidStateType.Ragdoll or
-                       currentState == Enum.HumanoidStateType.FallingDown or
-                       currentState == Enum.HumanoidStateType.Physics)
-        
-        -- ตรวจสอบว่ากำลังลุกขึ้นหรือไม่
+        local isDown = (hum.Health <= 0 or currentState == Enum.HumanoidStateType.Dead or currentState == Enum.HumanoidStateType.Ragdoll or currentState == Enum.HumanoidStateType.FallingDown or currentState == Enum.HumanoidStateType.Physics)
         local isGettingUp = (currentState == Enum.HumanoidStateType.GettingUp)
-        
         if isDown then
-            -- ปิด BodyGyro ชั่วคราว (ไม่ให้กลิ้ง)
             FakeBugGyro.MaxTorque = Vector3.new(0, 0, 0)
         elseif isGettingUp then
-            -- ตอนลุกขึ้น: ใช้แรงน้อยลง (ให้ลุกเร็วขึ้น)
             FakeBugGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
             FakeBugGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + hrp.CFrame.LookVector)
         else
-            -- เปิด BodyGyro กลับ (ทำงานปกติ)
             FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-            
             if previousPosition then
                 local distanceMoved = (hrp.Position - previousPosition).Magnitude
                 if distanceMoved > moveThreshold then
@@ -481,19 +464,21 @@ RunService.Heartbeat:Connect(function(dt)
             else
                 previousPosition = hrp.Position
             end
-
             if tiltActive then
                 local lookVector = hrp.CFrame.LookVector
-                local tiltCF = CFrame.new(hrp.Position, hrp.Position + lookVector) * CFrame.Angles(math.rad(30), 0, 0)
+                local tiltCF = CFrame.new(hrp.Position, hrp.Position + lookVector) * CFrame.Angles(math.rad(35), 0, 0)
                 FakeBugGyro.CFrame = tiltCF
             else
                 FakeBugGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + hrp.CFrame.LookVector)
             end
         end
+    else
+        if FakeBugGyro then
+            FakeBugGyro:Destroy()
+            FakeBugGyro = nil
+        end
     end
 end)
-
--- ==================== MOVEMENT SYSTEM ====================
 
 RunService.RenderStepped:Connect(function()
     if enabled and selectedPlayer then
