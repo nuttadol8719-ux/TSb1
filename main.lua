@@ -48,6 +48,7 @@ local moveThreshold = 0.05
 local tiltActive = false
 local tiltTimer = 0
 local tiltDuration = 0.5
+local animationConnection = nil
 
 -- Functions
 local function GetPlayers()
@@ -60,7 +61,7 @@ local function GetPlayers()
     return t
 end
 
--- ==================== FLOATING FLY BUTTON (สำหรับมือถือ) ====================
+-- ==================== FLOATING FLY BUTTON ====================
 
 local PlayerGui = player:WaitForChild("PlayerGui")
 
@@ -87,17 +88,6 @@ local Corner = Instance.new("UICorner")
 Corner.CornerRadius = UDim.new(0, 15)
 Corner.Parent = FlyButton
 
-local Shadow = Instance.new("ImageLabel")
-Shadow.Name = "Shadow"
-Shadow.Size = UDim2.new(1, 10, 1, 10)
-Shadow.Position = UDim2.new(0, -5, 0, -5)
-Shadow.BackgroundTransparency = 1
-Shadow.Image = "rbxasset://textures/ui/GuiImagePlaceholder.png"
-Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-Shadow.ImageTransparency = 0.5
-Shadow.ZIndex = -1
-Shadow.Parent = FlyButton
-
 local function UpdateButtonColor()
     if flyEnabled then
         FlyButton.BackgroundColor3 = Color3.fromRGB(0, 170, 255)
@@ -122,6 +112,7 @@ FlyButton.MouseButton1Click:Connect(function()
     end
 end)
 
+-- Dragging
 local dragging = false
 local dragInput, mousePos, framePos
 
@@ -235,7 +226,7 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name = "💥 อนิเมชั่นเพิ่มดาเมจ",
+    Name = "อนิเมชั่นเพิ่มดาเมจ",
     CurrentValue = false,
     Flag = "FreezeAnimToggle",
     Callback = function(Value)
@@ -244,21 +235,36 @@ MainTab:CreateToggle({
         if not char then return end
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid then return end
-        local animator = humanoid:FindFirstChildOfClass("Animator")
-        if not animator then return end
+
         if Value then
-            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-                track:AdjustSpeed(0)
+            if animationConnection then
+                animationConnection:Disconnect()
+                animationConnection = nil
             end
+            animationConnection = humanoid.AnimationPlayed:Connect(function(track)
+                pcall(function()
+                    track:AdjustSpeed(0)
+                    track.TimePosition = 0
+                end)
+            end)
             Rayfield:Notify({
                 Title = "อนิเมชั่นเพิ่มดาเมจ เปิด",
-                Content = "ดาเมจเพิ่มขึ้น! 💥",
+                Content = "หยุดอนิเมชั่นทั้งหมดเพื่อเพิ่มดาเมจ",
                 Duration = 3,
                 Image = 4483362458,
             })
         else
-            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
-                track:AdjustSpeed(1)
+            if animationConnection then
+                animationConnection:Disconnect()
+                animationConnection = nil
+            end
+            local animator = humanoid:FindFirstChildOfClass("Animator")
+            if animator then
+                for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                    pcall(function()
+                        track:AdjustSpeed(1)
+                    end)
+                end
             end
             Rayfield:Notify({
                 Title = "อนิเมชั่นเพิ่มดาเมจ ปิด",
@@ -293,7 +299,7 @@ MainTab:CreateToggle({
         else
             Rayfield:Notify({
                 Title = "บัคปลอม เปิด",
-                Content = "ตัวจะแหงนขึ้น 35° เมื่อเคลื่อนไหว 🌀",
+                Content = "ตัวจะแหงนขึ้น 35° เมื่อเคลื่อนไหว",
                 Duration = 3,
                 Image = 4483362458,
             })
@@ -350,7 +356,7 @@ MainTab:CreateSlider({
 
 MainTab:CreateParagraph({
     Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C หรือปุ่มลอย ✈️\n✈️ ปุ่มลอยสามารถซ่อน/แสดงได้\n💥 อนิเมชั่นเพิ่มดาเมจ: หยุดอนิเมชั่น = ดาเมจเพิ่ม\n🌀 บัคปลอม: ตัวแหงนขึ้น 35° เมื่อเคลื่อนไหว"
+    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C หรือปุ่มลอย ✈️\n✈️ ปุ่มลอยสามารถซ่อน/แสดงได้\nอนิเมชั่นเพิ่มดาเมจ: หยุดอนิเมชั่นเพื่อเพิ่มดาเมจ\n🌀 บัคปลอม: ตัวแหงนขึ้น 35° เมื่อเคลื่อนไหว"
 })
 
 -- ==================== OTHER TAB ====================
@@ -377,9 +383,23 @@ RunService.Heartbeat:Connect(function(dt)
     local char = player.Character
     if not char then return end
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    local hum = char:FindFirstChild("Humanoid")
+    local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
+    -- Freeze Animation System
+    if freezeAnimEnabled then
+        local animator = hum:FindFirstChildOfClass("Animator")
+        if animator then
+            for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+                pcall(function()
+                    track.TimePosition = 0
+                    track:AdjustSpeed(0)
+                end)
+            end
+        end
+    end
+
+    -- Fly System
     if flyEnabled then
         if not BV then
             BV = Instance.new("BodyVelocity")
@@ -429,6 +449,7 @@ RunService.Heartbeat:Connect(function(dt)
         if BG then BG:Destroy() BG = nil end
     end
 
+    -- Fake Bug System
     if fakeBugEnabled then
         if not FakeBugGyro or FakeBugGyro.Parent ~= hrp then
             FakeBugGyro = Instance.new("BodyGyro")
@@ -523,7 +544,7 @@ end)
 
 Rayfield:Notify({
     Title = "น้องปอนด์ Hub",
-    Content = "โหลดสำเร็จ! ยินดีต้อนรับ 🎨",
+    Content = "โหลดสำเร็จ! ระบบอนิเมชั่นเพิ่มดาเมจกลับมาแล้ว",
     Duration = 5,
     Image = 4483362458,
 })
