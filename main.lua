@@ -45,9 +45,6 @@ local BG = nil
 local FakeBugGyro = nil
 local previousPosition = nil
 local moveThreshold = 0.05
-local tiltActive = false
-local tiltTimer = 0
-local tiltDuration = 0.5
 local animationConnection = nil
 
 -- Functions
@@ -60,6 +57,14 @@ local function GetPlayers()
     end
     return t
 end
+
+-- ล้างค่าตัวแปรเมื่อตัวละครเกิดใหม่
+player.CharacterAdded:Connect(function()
+    BV = nil
+    BG = nil
+    FakeBugGyro = nil
+    previousPosition = nil
+end)
 
 -- ==================== FLOATING FLY BUTTON ====================
 
@@ -99,53 +104,6 @@ local function UpdateButtonColor()
         FlyButton.TextSize = 40
     end
 end
-
-FlyButton.MouseButton1Click:Connect(function()
-    flyEnabled = not flyEnabled
-    UpdateButtonColor()
-    if not flyEnabled then
-        if BV then BV:Destroy() BV = nil end
-        if BG then BG:Destroy() BG = nil end
-    end
-    if Rayfield.Flags["FlyToggle"] then
-        Rayfield.Flags["FlyToggle"]:Set(flyEnabled)
-    end
-end)
-
--- Dragging
-local dragging = false
-local dragInput, mousePos, framePos
-
-FlyButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        dragging = true
-        mousePos = input.Position
-        framePos = FlyButton.Position
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-FlyButton.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-        dragInput = input
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input == dragInput and dragging then
-        local delta = input.Position - mousePos
-        FlyButton.Position = UDim2.new(
-            framePos.X.Scale,
-            framePos.X.Offset + delta.X,
-            framePos.Y.Scale,
-            framePos.Y.Offset + delta.Y
-        )
-    end
-end)
 
 -- ==================== MAIN TAB ====================
 
@@ -201,7 +159,7 @@ MainTab:CreateToggle({
     end,
 })
 
-MainTab:CreateToggle({
+local FlyToggle = MainTab:CreateToggle({
     Name = "เทพเจ้าลอยฟ้า (คีย์ลัด: C)",
     CurrentValue = false,
     Flag = "FlyToggle",
@@ -214,6 +172,56 @@ MainTab:CreateToggle({
         end
     end,
 })
+
+-- ปุ่มลอยควบคุมการกด บิน
+FlyButton.MouseButton1Click:Connect(function()
+    flyEnabled = not flyEnabled
+    FlyToggle:Set(flyEnabled)
+end)
+
+-- คีย์ลัดกด C บิน
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode.C then
+        flyEnabled = not flyEnabled
+        FlyToggle:Set(flyEnabled)
+    end
+end)
+
+-- Dragging ปุ่มลอย
+local dragging = false
+local dragInput, mousePos, framePos
+
+FlyButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        mousePos = input.Position
+        framePos = FlyButton.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+FlyButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - mousePos
+        FlyButton.Position = UDim2.new(
+            framePos.X.Scale,
+            framePos.X.Offset + delta.X,
+            framePos.Y.Scale,
+            framePos.Y.Offset + delta.Y
+        )
+    end
+end)
 
 MainTab:CreateToggle({
     Name = "แสดงปุ่มลอย ✈️",
@@ -288,8 +296,6 @@ MainTab:CreateToggle({
                 FakeBugGyro = nil
             end
             previousPosition = nil
-            tiltActive = false
-            tiltTimer = 0
             Rayfield:Notify({
                 Title = "บัคปลอม ปิด",
                 Content = "กลับสู่ปกติแล้ว",
@@ -354,29 +360,6 @@ MainTab:CreateSlider({
     end,
 })
 
-MainTab:CreateParagraph({
-    Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C หรือปุ่มลอย ✈️\n✈️ ปุ่มลอยสามารถซ่อน/แสดงได้\nอนิเมชั่นเพิ่มดาเมจ: หยุดอนิเมชั่นเพื่อเพิ่มดาเมจ\n🌀 บัคปลอม: ตัวแหงนขึ้น 35° เมื่อเคลื่อนไหว"
-})
-
--- ==================== OTHER TAB ====================
-
-OtherTab:CreateParagraph({
-    Title = "ℹ️ ข้อมูล UI",
-    Content = "UI Library: Rayfield\nVersion: Latest\nCreated by: pond"
-})
-
--- ==================== KEYBIND HANDLER ====================
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if gameProcessed then return end
-    if input.KeyCode == Enum.KeyCode.C then
-        flyEnabled = not flyEnabled
-        UpdateButtonColor()
-        Rayfield.Flags["FlyToggle"]:Set(flyEnabled)
-    end
-end)
-
 -- ==================== SYSTEMS ====================
 
 RunService.Heartbeat:Connect(function(dt)
@@ -386,7 +369,7 @@ RunService.Heartbeat:Connect(function(dt)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hrp or not hum then return end
 
-    -- Freeze Animation System
+    -- ล็อคอนิเมชั่นเพิ่มดาเมจ
     if freezeAnimEnabled then
         local animator = hum:FindFirstChildOfClass("Animator")
         if animator then
@@ -399,7 +382,39 @@ RunService.Heartbeat:Connect(function(dt)
         end
     end
 
-    -- Fly System
+    -- ระบบบัคปลอม (Fake Bug 35 Degree Pitch)
+    if fakeBugEnabled then
+        local currentPos = hrp.Position
+        local isMoving = false
+        if previousPosition then
+            isMoving = (Vector3.new(currentPos.X, 0, currentPos.Z) - Vector3.new(previousPosition.X, 0, previousPosition.Z)).Magnitude > moveThreshold
+        end
+        previousPosition = currentPos
+
+        if isMoving then
+            if not FakeBugGyro then
+                FakeBugGyro = Instance.new("BodyGyro")
+                FakeBugGyro.Name = "FakeBugGyro"
+                FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+                FakeBugGyro.P = 10000
+                FakeBugGyro.Parent = hrp
+            end
+            FakeBugGyro.CFrame = hrp.CFrame * CFrame.Angles(math.rad(35), 0, 0)
+        else
+            if FakeBugGyro then
+                FakeBugGyro:Destroy()
+                FakeBugGyro = nil
+            end
+        end
+    else
+        if FakeBugGyro then
+            FakeBugGyro:Destroy()
+            FakeBugGyro = nil
+        end
+        previousPosition = nil
+    end
+
+    -- ระบบบิน (Fly System)
     if flyEnabled then
         if not BV then
             BV = Instance.new("BodyVelocity")
@@ -428,17 +443,6 @@ RunService.Heartbeat:Connect(function(dt)
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then
             moveDirection = moveDirection + cam.CFrame.RightVector
         end
-        if UserInputService.TouchEnabled then
-            local moveDir = hum.MoveDirection
-            if moveDir.Magnitude > 0 then
-                local camCF = cam.CFrame
-                local camLook = camCF.LookVector
-                local camRight = camCF.RightVector
-                local forwardAmount = moveDir:Dot(Vector3.new(camLook.X, 0, camLook.Z).Unit)
-                local rightAmount = moveDir:Dot(Vector3.new(camRight.X, 0, camRight.Z).Unit)
-                moveDirection = moveDirection + (camLook * forwardAmount) + (camRight * rightAmount)
-            end
-        end
         if moveDirection.Magnitude > 0 then
             moveDirection = moveDirection.Unit
         end
@@ -447,57 +451,6 @@ RunService.Heartbeat:Connect(function(dt)
     else
         if BV then BV:Destroy() BV = nil end
         if BG then BG:Destroy() BG = nil end
-    end
-
-    -- Fake Bug System
-    if fakeBugEnabled then
-        if not FakeBugGyro or FakeBugGyro.Parent ~= hrp then
-            FakeBugGyro = Instance.new("BodyGyro")
-            FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-            FakeBugGyro.P = 10000
-            FakeBugGyro.D = 500
-            FakeBugGyro.Parent = hrp
-            previousPosition = hrp.Position
-        end
-        local currentState = hum:GetState()
-        local isDown = (hum.Health <= 0 or currentState == Enum.HumanoidStateType.Dead or currentState == Enum.HumanoidStateType.Ragdoll or currentState == Enum.HumanoidStateType.FallingDown or currentState == Enum.HumanoidStateType.Physics)
-        local isGettingUp = (currentState == Enum.HumanoidStateType.GettingUp)
-        if isDown then
-            FakeBugGyro.MaxTorque = Vector3.new(0, 0, 0)
-        elseif isGettingUp then
-            FakeBugGyro.MaxTorque = Vector3.new(1e5, 1e5, 1e5)
-            FakeBugGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + hrp.CFrame.LookVector)
-        else
-            FakeBugGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
-            if previousPosition then
-                local distanceMoved = (hrp.Position - previousPosition).Magnitude
-                if distanceMoved > moveThreshold then
-                    tiltActive = true
-                    tiltTimer = tiltDuration
-                else
-                    if tiltTimer > 0 then
-                        tiltTimer -= dt
-                    else
-                        tiltActive = false
-                    end
-                end
-                previousPosition = hrp.Position
-            else
-                previousPosition = hrp.Position
-            end
-            if tiltActive then
-                local lookVector = hrp.CFrame.LookVector
-                local tiltCF = CFrame.new(hrp.Position, hrp.Position + lookVector) * CFrame.Angles(math.rad(35), 0, 0)
-                FakeBugGyro.CFrame = tiltCF
-            else
-                FakeBugGyro.CFrame = CFrame.new(hrp.Position, hrp.Position + hrp.CFrame.LookVector)
-            end
-        end
-    else
-        if FakeBugGyro then
-            FakeBugGyro:Destroy()
-            FakeBugGyro = nil
-        end
     end
 end)
 
@@ -530,21 +483,60 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
-Players.PlayerAdded:Connect(function(newPlayer)
-    PlayerDropdown:Refresh(GetPlayers())
-    if newPlayer.Name == selectedPlayerName then
-        task.wait(0.5)
-        selectedPlayer = newPlayer
+-- ==================== REMOTE LOOPS ====================
+
+-- Punch Loop
+task.spawn(function()
+    while task.wait(0.1) do
+        if remoteEnabled then
+            local char = player.Character
+            if char and char:FindFirstChild("Communicate") then
+                pcall(function()
+                    char.Communicate:FireServer({
+                        Goal = "LeftClick",
+                        Mobile = true
+                    })
+                end)
+            end
+        end
     end
 end)
 
-Players.PlayerRemoving:Connect(function()
-    PlayerDropdown:Refresh(GetPlayers())
+-- Auto Skill Loop
+task.spawn(function()
+    while task.wait(0.5) do
+        if AutoSkill then
+            local char = player.Character
+            local hum = char and char:FindFirstChild("Humanoid")
+            local backpack = player:FindFirstChild("Backpack")
+            if char and hum and hum.Health > 0 and backpack then
+                local communicate = char:FindFirstChild("Communicate")
+                if communicate then
+                    local skills = {"Normal Punch","Consecutive Punches","Shove","Uppercut"}
+                    for _, skillName in ipairs(skills) do
+                        local skill = backpack:FindFirstChild(skillName)
+                        if skill and AutoSkill then
+                            local args = {{
+                                IsAutoActivate = true,
+                                Goal = "Console Move",
+                                Tool = skill,
+                                ToolName = skillName
+                            }}
+                            pcall(function()
+                                communicate:FireServer(unpack(args))
+                            end)
+                            task.wait(0.5)
+                        end
+                    end
+                end
+            end
+        end
+    end
 end)
 
 Rayfield:Notify({
     Title = "น้องปอนด์ Hub",
-    Content = "โหลดสำเร็จ! ระบบอนิเมชั่นเพิ่มดาเมจกลับมาแล้ว",
+    Content = "โหลดสำเร็จ! แก้ไขระบบทั้งหมดเรียบร้อยแล้ว",
     Duration = 5,
     Image = 4483362458,
 })
