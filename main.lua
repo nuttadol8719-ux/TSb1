@@ -11,7 +11,7 @@ local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
     Name = "น้องปอนด์ Hub",
     LoadingTitle = "น้องปอนด์ Hub",
-    LoadingSubtitle = "by pond - Thai edition",
+    LoadingSubtitle = "by pond",
     ConfigurationSaving = {
         Enabled = true,
         FolderName = "PondHub",
@@ -40,8 +40,10 @@ local flySpeed = 50
 local orbitSpeed = 0.5
 local mode = "เข้าหลัง💦"
 local orbitAngle = 0
+local predictionTime = 0.3
 local BV = nil
 local BG = nil
+local BP_Target = nil
 local FakeBugGyro = nil
 local previousPosition = nil
 local moveThreshold = 0.05
@@ -49,6 +51,8 @@ local tiltActive = false
 local tiltTimer = 0
 local tiltDuration = 0.5
 local animationConnection = nil
+local lastTargetVelocity = Vector3.zero
+local GRAVITY = workspace.Gravity
 
 -- Functions
 local function GetPlayers()
@@ -180,6 +184,22 @@ MainTab:CreateToggle({
     Flag = "BackToggle",
     Callback = function(Value)
         enabled = Value
+        if not Value and BP_Target then
+            BP_Target:Destroy()
+            BP_Target = nil
+        end
+    end,
+})
+
+MainTab:CreateSlider({
+    Name = "ติดหนึบ",
+    Range = {0, 0.5},
+    Increment = 0.01,
+    Suffix = "s",
+    CurrentValue = 0.3,
+    Flag = "PredictionSlider",
+    Callback = function(Value)
+        predictionTime = Value
     end,
 })
 
@@ -277,7 +297,7 @@ MainTab:CreateToggle({
 })
 
 MainTab:CreateToggle({
-    Name = "🌀 บัคปลอม (Fake Bug)",
+    Name = "🌀 บัคปลอม",
     CurrentValue = false,
     Flag = "FakeBugToggle",
     Callback = function(Value)
@@ -354,16 +374,11 @@ MainTab:CreateSlider({
     end,
 })
 
-MainTab:CreateParagraph({
-    Title = "คำแนะนำ",
-    Content = "💡 คีย์ลัดเทพเจ้าลอยฟ้า: กด C หรือปุ่มลอย ✈️\n✈️ ปุ่มลอยสามารถซ่อน/แสดงได้\nอนิเมชั่นเพิ่มดาเมจ: หยุดอนิเมชั่นเพื่อเพิ่มดาเมจ\n🌀 บัคปลอม: ตัวแหงนขึ้น 35° เมื่อเคลื่อนไหว"
-})
-
 -- ==================== OTHER TAB ====================
 
 OtherTab:CreateParagraph({
     Title = "ℹ️ ข้อมูล UI",
-    Content = "UI Library: Rayfield\nVersion: Latest\nCreated by: pond"
+    Content = "UI Library: Rayfield\nCreated by: pond"
 })
 
 -- ==================== KEYBIND HANDLER ====================
@@ -501,30 +516,125 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
-RunService.RenderStepped:Connect(function()
+-- ==================== ANTI-RAGDOLL FLING TELEPORT ENGINE ====================
+
+local function UpdatePosition()
     if enabled and selectedPlayer then
         local target = selectedPlayer.Character
         local me = player.Character
         if target and me then
             local tHRP = target:FindFirstChild("HumanoidRootPart")
+            local tHum = target:FindFirstChildOfClass("Humanoid")
             local mHRP = me:FindFirstChild("HumanoidRootPart")
-            if tHRP and mHRP then
-                local targetPos
+            local mHum = me:FindFirstChildOfClass("Humanoid")
+
+            if tHRP and mHRP and tHum and mHum then
+                local function checkDown(hum)
+                    local st = hum:GetState()
+                    return hum.Health <= 0 
+                        or st == Enum.HumanoidStateType.Dead 
+                        or st == Enum.HumanoidStateType.Ragdoll 
+                        or st == Enum.HumanoidStateType.FallingDown 
+                        or st == Enum.HumanoidStateType.Physics
+                        or st == Enum.HumanoidStateType.GettingUp
+                end
+
+                if checkDown(tHum) or checkDown(mHum) then
+                    if BP_Target then
+                        BP_Target:Destroy()
+                        BP_Target = nil
+                    end
+                    return
+                end
+
+                local predictedTargetPos = tHRP.Position + (tHRP.Velocity * predictionTime)
+                local predictedCFrame = CFrame.new(predictedTargetPos) * (tHRP.CFrame - tHRP.Position)
+
+                local finalTargetPos
                 if mode == "เข้าหลัง💦" then
-                    targetPos = (tHRP.CFrame * CFrame.new(0, 0, distance)).Position
+                    finalTargetPos = (predictedCFrame * CFrame.new(0, 0, distance)).Position
                 elseif mode == "หน้า" then
-                    targetPos = (tHRP.CFrame * CFrame.new(0, 0, -distance)).Position
+                    finalTargetPos = (predictedCFrame * CFrame.new(0, 0, -distance)).Position
                 elseif mode == "ซ้าย" then
-                    targetPos = (tHRP.CFrame * CFrame.new(-distance, 0, 0)).Position
+                    finalTargetPos = (predictedCFrame * CFrame.new(-distance, 0, 0)).Position
                 elseif mode == "ขวา" then
-                    targetPos = (tHRP.CFrame * CFrame.new(distance, 0, 0)).Position
+                    finalTargetPos = (predictedCFrame * CFrame.new(distance, 0, 0)).Position
                 elseif mode == "หมุนตริ้ว" then
                     orbitAngle += orbitSpeed * 0.05
                     local x = math.cos(orbitAngle) * distance
                     local z = math.sin(orbitAngle) * distance
-                    targetPos = tHRP.Position + Vector3.new(x, 0, z)
+                    finalTargetPos = predictedTargetPos + Vector3.new(x, 0, z)
                 end
-                mHRP.CFrame = CFrame.lookAt(targetPos, tHRP.Position)
+
+                if not BP_Target or BP_Target.Parent ~= mHRP then
+                    if BP_Target then BP_Target:Destroy() end
+                    BP_Target = Instance.new("BodyPosition")
+                    BP_Target.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+                    BP_Target.P = 500000
+                    BP_Target.D = 300
+                    BP_Target.Parent = mHRP
+                end
+
+                BP_Target.Position = finalTargetPos
+                mHRP.CFrame = CFrame.lookAt(mHRP.Position, predictedTargetPos)
+            end
+        end
+    else
+        if BP_Target then
+            BP_Target:Destroy()
+            BP_Target = nil
+        end
+    end
+end
+
+RunService.PreRender:Connect(UpdatePosition)
+
+-- ==================== REMOTE LOOPS ====================
+
+-- Punch Loop
+task.spawn(function()
+    while task.wait(0.1) do
+        if remoteEnabled then
+            local char = player.Character
+            if char and char:FindFirstChild("Communicate") then
+                pcall(function()
+                    char.Communicate:FireServer({
+                        Goal = "LeftClick",
+                        Mobile = true
+                    })
+                end)
+            end
+        end
+    end
+end)
+
+-- Auto Skill Loop
+task.spawn(function()
+    while task.wait(0.5) do
+        if AutoSkill then
+            local char = player.Character
+            local hum = char and char:FindFirstChild("Humanoid")
+            local backpack = player:FindFirstChild("Backpack")
+            if char and hum and hum.Health > 0 and backpack then
+                local communicate = char:FindFirstChild("Communicate")
+                if communicate then
+                    local skills = {"Normal Punch","Consecutive Punches","Shove","Uppercut"}
+                    for _, skillName in ipairs(skills) do
+                        local skill = backpack:FindFirstChild(skillName)
+                        if skill and AutoSkill then
+                            local args = {{
+                                IsAutoActivate = true,
+                                Goal = "Console Move",
+                                Tool = skill,
+                                ToolName = skillName
+                            }}
+                            pcall(function()
+                                communicate:FireServer(unpack(args))
+                            end)
+                            task.wait(0.5)
+                        end
+                    end
+                end
             end
         end
     end
@@ -544,7 +654,7 @@ end)
 
 Rayfield:Notify({
     Title = "น้องปอนด์ Hub",
-    Content = "โหลดสำเร็จ! ระบบอนิเมชั่นเพิ่มดาเมจกลับมาแล้ว",
+    Content = "ปรับค่าเริ่มต้นระยะ (5) และ ติดหนึบ (0.3) เรียบร้อยแล้ว!",
     Duration = 5,
     Image = 4483362458,
 })
