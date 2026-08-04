@@ -43,7 +43,6 @@ local orbitAngle = 0
 local predictionTime = 0.3
 local BV = nil
 local BG = nil
-local BP_Target = nil
 local FakeBugGyro = nil
 local previousPosition = nil
 local moveThreshold = 0.05
@@ -51,8 +50,6 @@ local tiltActive = false
 local tiltTimer = 0
 local tiltDuration = 0.5
 local animationConnection = nil
-local lastTargetVelocity = Vector3.zero
-local GRAVITY = workspace.Gravity
 
 -- Functions
 local function GetPlayers()
@@ -184,10 +181,6 @@ MainTab:CreateToggle({
     Flag = "BackToggle",
     Callback = function(Value)
         enabled = Value
-        if not Value and BP_Target then
-            BP_Target:Destroy()
-            BP_Target = nil
-        end
     end,
 })
 
@@ -516,7 +509,7 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
--- ==================== ANTI-RAGDOLL FLING TELEPORT ENGINE ====================
+-- ==================== TELEPORT ENGINE ====================
 
 local function UpdatePosition()
     if enabled and selectedPlayer then
@@ -524,29 +517,9 @@ local function UpdatePosition()
         local me = player.Character
         if target and me then
             local tHRP = target:FindFirstChild("HumanoidRootPart")
-            local tHum = target:FindFirstChildOfClass("Humanoid")
             local mHRP = me:FindFirstChild("HumanoidRootPart")
-            local mHum = me:FindFirstChildOfClass("Humanoid")
 
-            if tHRP and mHRP and tHum and mHum then
-                local function checkDown(hum)
-                    local st = hum:GetState()
-                    return hum.Health <= 0 
-                        or st == Enum.HumanoidStateType.Dead 
-                        or st == Enum.HumanoidStateType.Ragdoll 
-                        or st == Enum.HumanoidStateType.FallingDown 
-                        or st == Enum.HumanoidStateType.Physics
-                        or st == Enum.HumanoidStateType.GettingUp
-                end
-
-                if checkDown(tHum) or checkDown(mHum) then
-                    if BP_Target then
-                        BP_Target:Destroy()
-                        BP_Target = nil
-                    end
-                    return
-                end
-
+            if tHRP and mHRP then
                 local predictedTargetPos = tHRP.Position + (tHRP.Velocity * predictionTime)
                 local predictedCFrame = CFrame.new(predictedTargetPos) * (tHRP.CFrame - tHRP.Position)
 
@@ -566,28 +539,13 @@ local function UpdatePosition()
                     finalTargetPos = predictedTargetPos + Vector3.new(x, 0, z)
                 end
 
-                if not BP_Target or BP_Target.Parent ~= mHRP then
-                    if BP_Target then BP_Target:Destroy() end
-                    BP_Target = Instance.new("BodyPosition")
-                    BP_Target.MaxForce = Vector3.new(9e9, 9e9, 9e9)
-                    BP_Target.P = 500000
-                    BP_Target.D = 300
-                    BP_Target.Parent = mHRP
-                end
-
-                BP_Target.Position = finalTargetPos
-                mHRP.CFrame = CFrame.lookAt(mHRP.Position, predictedTargetPos)
+                mHRP.CFrame = CFrame.lookAt(finalTargetPos, predictedTargetPos)
             end
-        end
-    else
-        if BP_Target then
-            BP_Target:Destroy()
-            BP_Target = nil
         end
     end
 end
 
-RunService.PreRender:Connect(UpdatePosition)
+RunService.RenderStepped:Connect(UpdatePosition)
 
 -- ==================== REMOTE LOOPS ====================
 
@@ -654,7 +612,8 @@ end)
 
 Rayfield:Notify({
     Title = "น้องปอนด์ Hub",
-    Content = "ปรับค่าเริ่มต้นระยะ (5) และ ติดหนึบ (0.3) เรียบร้อยแล้ว!",
+    Content = "ลบระบบ Anti-Fling ออกเรียบร้อย กลับสู่แบบเดิมแล้วครับ!",
     Duration = 5,
     Image = 4483362458,
 })
+https://discord.gg/daengsaet
