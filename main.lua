@@ -23,6 +23,8 @@ local Window = Rayfield:CreateWindow({
 
 -- Tabs
 local MainTab = Window:CreateTab("Main", 4483362458)
+local BlockTab = Window:CreateTab("Auto Block", 4483362458)
+local CounterTab = Window:CreateTab("ตั้งค่าต่อยสวน", 4483345998)
 local OtherTab = Window:CreateTab("อื่นๆ", 4483345998)
 
 -- Variables
@@ -51,6 +53,34 @@ local tiltTimer = 0
 local tiltDuration = 0.5
 local animationConnection = nil
 
+-- Auto Block Variables
+local autoBlockEnabled = false
+local blockDistance = 10       -- ระยะตรวจจับการโจมตี (เมตร)
+local blockDuration = 0.35    -- ระยะเวลาถือบล็อกต่อการโจมตี 1 ครั้ง (วินาที)
+local isBlocking = false
+local autoUnblock = true       -- ปลดบล็อกอัตโนมัติเมื่อการโจมตีจบ
+
+-- Counter Attack Variables
+local counterEnabled = true    -- เปิด/ปิด การต่อยสวน 1 ครั้งหลังบล็อก
+local counterDelay = 0.05      -- เวลาดีเลย์ก่อนกดต่อยสวน (วินาที)
+local isCountering = false
+
+-- Target Animation IDs Table
+local targetAnimationIds = {
+    ["10469493270"] = true, ["10469630950"] = true, ["10469639222"] = true, ["10469643643"] = true,
+    ["10503381238"] = true, ["10479335397"] = true, ["10466974800"] = true, ["10468665991"] = true,
+    ["13532562418"] = true, ["13532600125"] = true, ["13532604085"] = true, ["13294471966"] = true,
+    ["12296882427"] = true, ["13380255751"] = true, ["13370310513"] = true, ["13390230973"] = true,
+    ["13378751717"] = true, ["13378708199"] = true, ["10470104242"] = true, ["13379003796"] = true,
+    ["13294790250"] = true, ["13376962659"] = true, ["14004222985"] = true, ["13997092940"] = true,
+    ["14001963401"] = true, ["14136436157"] = true, ["14046756619"] = true, ["14004235777"] = true,
+    ["15259161390"] = true, ["15240216931"] = true, ["15240176873"] = true, ["15162694192"] = true,
+    ["15290930205"] = true, ["15295895753"] = true, ["16515503507"] = true, ["16515448089"] = true,
+    ["16515520431"] = true, ["16552234590"] = true, ["16139108718"] = true, ["16139402582"] = true,
+    ["17799224866"] = true, ["17857788598"] = true, ["17857880283"] = true, ["18179181663"] = true,
+    ["77509627104305"] = true, ["123005629431309"] = true,
+}
+
 -- Functions
 local function GetPlayers()
     local t = {}
@@ -60,6 +90,80 @@ local function GetPlayers()
         end
     end
     return t
+end
+
+-- Remote Punch Counter Function
+local function PerformSinglePunchRemote()
+    local char = player.Character
+    if not char then return end
+
+    local communicate = char:FindFirstChild("Communicate")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+
+    if communicate then
+        pcall(function()
+            local currentCF = hrp and hrp.CFrame or CFrame.new()
+
+            communicate:FireServer({
+                Mobile = true,
+                Goal = "LeftClick",
+                MousePos = currentCF
+            })
+
+            task.wait(0.03)
+
+            communicate:FireServer({
+                Goal = "LeftClickRelease"
+            })
+        end)
+    end
+end
+
+-- Remote Block Trigger Function
+local function TriggerBlockRemote()
+    if isBlocking then return end
+    
+    local char = player.Character
+    if not char then return end
+
+    local communicate = char:FindFirstChild("Communicate")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+
+    if not communicate then return end
+
+    isBlocking = true
+
+    -- 1. ยิง Remote กดบล็อก (KeyPress -> KeyCode.F)
+    pcall(function()
+        local currentCF = hrp and hrp.CFrame or CFrame.new()
+        communicate:FireServer({
+            Goal = "KeyPress",
+            Key = Enum.KeyCode.F,
+            MousePos = currentCF
+        })
+    end)
+
+    -- 2. รอนานเท่ากับ blockDuration แล้วยิง Remote ปล่อยบล็อก (KeyRelease)
+    task.delay(blockDuration, function()
+        if isBlocking and autoUnblock then
+            pcall(function()
+                communicate:FireServer({
+                    Goal = "KeyRelease",
+                    Key = Enum.KeyCode.F
+                })
+            end)
+            isBlocking = false
+
+            -- ทำการต่อยสวน 1 ครั้งหลังปล่อยบล็อก
+            if counterEnabled and not isCountering then
+                isCountering = true
+                task.wait(counterDelay)
+                PerformSinglePunchRemote()
+                task.wait(0.1)
+                isCountering = false
+            end
+        end
+    end)
 end
 
 -- ==================== FLOATING FLY BUTTON ====================
@@ -367,6 +471,84 @@ MainTab:CreateSlider({
     end,
 })
 
+-- ==================== AUTO BLOCK TAB ====================
+
+BlockTab:CreateParagraph({
+    Title = "🛡️ ระบบ Auto Block (Pure Remote Mode)",
+    Content = "ใช้การยิง Remote Event 'Communicate' ทั้งกดและปล่อยบล็อกอัตโนมัติ"
+})
+
+BlockTab:CreateToggle({
+    Name = "🛡️ เปิดใช้งาน Auto Block",
+    CurrentValue = false,
+    Flag = "AutoBlockToggle",
+    Callback = function(Value)
+        autoBlockEnabled = Value
+        if not Value and isBlocking then
+            local char = player.Character
+            if char and char:FindFirstChild("Communicate") then
+                char.Communicate:FireServer({
+                    Goal = "KeyRelease",
+                    Key = Enum.KeyCode.F
+                })
+            end
+            isBlocking = false
+        end
+    end,
+})
+
+BlockTab:CreateSlider({
+    Name = "ระยะตรวจจับการโจมตี",
+    Range = {4, 20},
+    Increment = 1,
+    Suffix = "m",
+    CurrentValue = 10,
+    Flag = "BlockDistanceSlider",
+    Callback = function(Value)
+        blockDistance = Value
+    end,
+})
+
+BlockTab:CreateSlider({
+    Name = "ระยะเวลาค้างบล็อก",
+    Range = {0.1, 1.2},
+    Increment = 0.05,
+    Suffix = "s",
+    CurrentValue = 0.35,
+    Flag = "BlockDurationSlider",
+    Callback = function(Value)
+        blockDuration = Value
+    end,
+})
+
+-- ==================== COUNTER TAB ====================
+
+CounterTab:CreateParagraph({
+    Title = "⚔️ ตั้งค่าระบบต่อยสวน (Counter Attack)",
+    Content = "ยิง Remote สั่ง M1 สวนกลับทันทีที่ปล่อยการ์ดบล็อก"
+})
+
+CounterTab:CreateToggle({
+    Name = "⚔️ เปิดใช้งานต่อยสวนหลังบล็อก",
+    CurrentValue = true,
+    Flag = "CounterToggle",
+    Callback = function(Value)
+        counterEnabled = Value
+    end,
+})
+
+CounterTab:CreateSlider({
+    Name = "ดีเลย์ก่อนกดต่อยสวน",
+    Range = {0, 0.3},
+    Increment = 0.01,
+    Suffix = "s",
+    CurrentValue = 0.05,
+    Flag = "CounterDelaySlider",
+    Callback = function(Value)
+        counterDelay = Value
+    end,
+})
+
 -- ==================== OTHER TAB ====================
 
 OtherTab:CreateParagraph({
@@ -507,6 +689,37 @@ RunService.Heartbeat:Connect(function(dt)
             FakeBugGyro = nil
         end
     end
+
+    -- Auto Block Engine Loop
+    if autoBlockEnabled then
+        for _, otherPlayer in ipairs(Players:GetPlayers()) do
+            if otherPlayer ~= player and otherPlayer.Character then
+                local targetChar = otherPlayer.Character
+                local targetHRP = targetChar:FindFirstChild("HumanoidRootPart")
+                local targetHum = targetChar:FindFirstChildOfClass("Humanoid")
+
+                if targetHRP and targetHum then
+                    local dist = (hrp.Position - targetHRP.Position).Magnitude
+
+                    if dist <= blockDistance then
+                        local animator = targetHum:FindFirstChildOfClass("Animator")
+                        if animator then
+                            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                                if track.IsPlaying and track.Animation then
+                                    local animId = tostring(track.Animation.AnimationId or ""):match("%d+")
+                                    
+                                    if animId and targetAnimationIds[animId] and track.TimePosition < 0.35 then
+                                        TriggerBlockRemote()
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
 end)
 
 -- ==================== TELEPORT ENGINE ====================
@@ -612,7 +825,7 @@ end)
 
 Rayfield:Notify({
     Title = "น้องปอนด์ Hub",
-    Content = "ลบระบบ Anti-Fling ออกเรียบร้อย กลับสู่แบบเดิมแล้วครับ!",
+    Content = "อัปเดตระบบ Auto Block & Counter Remote Event เข้าเมนูเรียบร้อยแล้ว!",
     Duration = 5,
     Image = 4483362458,
 })
